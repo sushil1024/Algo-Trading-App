@@ -105,7 +105,7 @@ def onerror(message):
     print("Connection Error: ", message)
 
     # Invalid ACCESS TOKEN
-    if message['code'] == -300:
+    if (message['code'] == -300) or (message['code'] == -99):
         print('Invalid token. Resetting the Access Token!')
         genaccesstoken()
         exit()
@@ -116,23 +116,24 @@ def onclose(message):
 
 
 def onopen():
-    symbols = ['NSE:ACC-EQ']
+    symbols = ['NSE:SBIN-EQ']
     fyers_ws.subscribe(symbols=symbols)
     fyers_ws.keep_running()
 
 
-fyers_ws = data_ws.FyersDataSocket(
-    access_token=access_token,
-    log_path="",
-    litemode=False,
-    write_to_file=False,
-    reconnect=True,
-    on_connect=onopen,
-    on_close=onclose,
-    on_error=onerror,
-    on_message=onmessage
-)
+if __name__ == '__main__':
+    fyers_ws = data_ws.FyersDataSocket(
+        access_token=access_token,
+        log_path="",
+        litemode=False,
+        write_to_file=False,
+        reconnect=True,
+        on_connect=onopen,
+        on_close=onclose,
+        on_error=onerror,
+        on_message=onmessage
+    )
 
-fyers_ws.connect()
+    fyers_ws.connect()
 
-input("skibidi ohio rizz check (nod if u fw it)")
+# input("skibidi ohio rizz check (nod if u fw it)")
