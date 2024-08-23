@@ -31,5 +31,17 @@ Fyers API
 
     ![img_4.png](img/img_4.png)
 
-# Integrate API
+# API Integration
 1. Fyers library and documentation: https://pypi.org/project/fyers-apiv3/
+2. Required logs will be generated in the home directory by the library.
+
+# Output:
+
+1. CLI:
+
+![img.png](img/op1.png)
+
+2. Database:
+
+![img.png](img/op2.png)
+

@@ -1,6 +1,8 @@
 from sqlalchemy import String, create_engine, select, DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
-import numpy as np
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -26,7 +28,6 @@ engine = create_engine('postgresql://postgres:r00t@localhost/fyers', echo=True)
 # create main table
 def create_table():
     Base.metadata.create_all(engine)
-    print('Table create successfully')
 
 
 # select query
@@ -36,7 +37,6 @@ def read():
     stmt = select(MarketData)
     for data in session.scalars(stmt):
         temp.append([data.symbol, data.close, data.timestamp])
-    print(temp)
     return temp
 
 
