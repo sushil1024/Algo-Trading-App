@@ -1,4 +1,5 @@
 import dotenv
+import pandas as pd
 from fyers_apiv3 import fyersModel
 import webbrowser
 from fyers_apiv3.FyersWebsocket import data_ws
@@ -6,8 +7,10 @@ import redis
 import os
 import datetime
 from dotenv import load_dotenv
+from models import create_table, insert_data
 
 load_dotenv()
+create_table()
 
 redirect_uri = os.getenv('REDIRECT_URI')
 client_id = os.getenv('CLIENT_ID')
@@ -17,6 +20,8 @@ response_type = "code"
 state = "sample"
 
 epoch_to_datetime = lambda epoch: datetime.datetime.fromtimestamp(epoch)
+temp_tick = {}
+temp_time = None
 
 appSession = fyersModel.SessionModel(client_id=client_id, redirect_uri=redirect_uri, response_type=response_type, state=state, secret_key=secret_key, grant_type=grant_type)
 
@@ -46,7 +51,7 @@ def genaccesstoken():
     print('response: ', response)
 
     # AUTH CODE expired
-    if response['code'] == -413:
+    if (response['code'] == -413) or (response['code'] == -8):
         genAuthCode()
         auth_code_new = str(input('Enter Auth Code: '))
         dotenv.set_key(dotenv_path=dotenv_file, key_to_set='AUTH_CODE', value_to_set=auth_code_new)
@@ -69,6 +74,7 @@ def genaccesstoken():
 
 # Fyers Web Socket
 def onmessage(message):
+    global temp_time
     # print("Response: ", message)
     try:
         if message['code'] == 200:
@@ -77,12 +83,47 @@ def onmessage(message):
         try:
             timestamp = epoch_to_datetime(message['last_traded_time'])
 
-            print(f'----------------- {message["symbol"]} -----------------')
-            print('O: ', message['open_price'])     # Open
-            print('H: ', message['high_price'])     # High
-            print('L: ', message['low_price'])      # Low
-            print('C: ', message['ltp'])            # Close
-            print('timestamp: ', timestamp)         # Timestamp
+            # minute update
+            if (temp_time != timestamp.strftime("%Y-%m-%d %H:%M")) and temp_tick:
+                temp_time = timestamp.strftime("%Y-%m-%d %H:%M")
+
+                try:
+                    df = pd.DataFrame.from_dict(temp_tick[message["symbol"]])
+                    df = df.sort_values(by='timestamp')
+                    df = df.drop(index=df.index[0])     # drop the first row
+
+                    df.set_index('timestamp', inplace=True)
+
+                    print(f"Live ticks: {temp_tick}")
+
+                    df = df.resample('min').agg(
+                        open=('c', 'first'),
+                        high=('c', 'max'),
+                        low=('c', 'min'),
+                        close=('c', 'last')
+                    ).dropna()
+
+                    print(f'DF: {df}')
+
+                    row = df.iloc[-1]
+                    timestamp = df.index[-1]
+
+                    insert_data(
+                        symbol=message["symbol"],
+                        open=float(row['open']),
+                        high=float(row['high']),
+                        low=float(row['low']),
+                        close=float(row['close']),
+                        timestamp=timestamp
+                    )
+
+                except Exception as e:
+                    print(f"Data Processing Exception: {e}")
+
+                temp_tick.clear()
+
+            temp_tick.setdefault(message["symbol"], {}).setdefault('c', []).append(message["ltp"])
+            temp_tick.setdefault(message["symbol"], {}).setdefault('timestamp', []).append(timestamp)
 
             # Write to Redis
             # rd.hset(f'symbol: {message["symbol"]}', mapping={
@@ -135,5 +176,3 @@ if __name__ == '__main__':
     )
 
     fyers_ws.connect()
-
-# input("skibidi ohio rizz check (nod if u fw it)")
