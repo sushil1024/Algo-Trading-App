@@ -17,20 +17,19 @@ Fyers API
 2. Navigate to API on https://myapi.fyers.in/dashboard
 3. Create an app
 
-   ![img_1.png](img_1.png)
+   ![img_1.png](img/img_1.png)
 
 4. Enter all required details
 
-   ![img_2.png](img_2.png)
+   ![img_2.png](img/img_2.png)
 
 5. You will get your app ID and secret key
 
-   ![img_3.png](img_3.png)
+   ![img_3.png](img/img_3.png)
 
 6. Your API dashboard will show your app
 
-    ![img_4.png](img_4.png)
-
+    ![img_4.png](img/img_4.png)
 
 # Integrate API
 1. Fyers library and documentation: https://pypi.org/project/fyers-apiv3/
