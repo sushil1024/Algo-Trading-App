@@ -5,7 +5,6 @@ Email id: sushilwaghmare2048@gmail.com
 Github: https://github.com/sushil1024
 '''
 
-
 import dotenv
 import pandas as pd
 from fyers_apiv3 import fyersModel
@@ -13,167 +12,162 @@ import webbrowser
 from fyers_apiv3.FyersWebsocket import data_ws
 import redis
 import os
-import datetime
 from dotenv import load_dotenv
 from models import create_table, insert_data
 from log_config import get_logger
+from helper import epoch_to_datetime, tick_to_df
 
 logger = get_logger(__name__)
 
 load_dotenv()
 create_table()
 
-redirect_uri = os.getenv('REDIRECT_URI')
-client_id = os.getenv('CLIENT_ID')
-secret_key = os.getenv('SECRET_KEY')
-grant_type = "authorization_code"
-response_type = "code"
-state = "sample"
 
-epoch_to_datetime = lambda epoch: datetime.datetime.fromtimestamp(epoch)
-temp_tick = {}
-temp_time = None
+class FyersConnect:
 
-appSession = fyersModel.SessionModel(client_id=client_id, redirect_uri=redirect_uri, response_type=response_type, state=state, secret_key=secret_key, grant_type=grant_type)
+    def __init__(self):
+        self.redirect_uri = os.getenv('REDIRECT_URI')
+        self.client_id = os.getenv('CLIENT_ID')
+        self.secret_key = os.getenv('SECRET_KEY')
+        self.grant_type = "authorization_code"
+        self.response_type = "code"
+        self.state = "sample"
 
-rd = redis.Redis(host='localhost',
-                 port=6379,
-                 decode_responses=True)
+        self.temp_tick = {}
+        self.temp_time = None
 
+        self.appSession = fyersModel.SessionModel(
+            client_id=self.client_id,
+            redirect_uri=self.redirect_uri,
+            response_type=self.response_type,
+            state=self.state,
+            secret_key=self.secret_key,
+            grant_type=self.grant_type
+        )
 
-# Login - Generates Auth Code
-def genAuthCode():
-    generateTokenUrl = appSession.generate_authcode()
-    webbrowser.open(generateTokenUrl, new=1)
+        rd = redis.Redis(host='localhost',
+                         port=6379,
+                         decode_responses=True)
 
+        self.auth_code = os.getenv('AUTH_CODE')
+        self.access_token = os.getenv('ACCESS_KEY')
 
-auth_code = os.getenv('AUTH_CODE')
-access_token = os.getenv('ACCESS_KEY')
+        self.fyers_ws = data_ws.FyersDataSocket(
+            access_token=self.access_token,
+            log_path="",
+            litemode=False,
+            write_to_file=False,
+            reconnect=True,
+            on_connect=self.onopen,
+            on_close=self.onclose,
+            on_error=self.onerror,
+            on_message=self.onmessage
+        )
 
+        self.fyers_ws.connect()
 
-# Generates Access Token
-def genaccesstoken():
-    appSession.set_token(auth_code)
-    response = appSession.generate_token()
+    # Login - Generates Auth Code
+    def genAuthCode(self):
+        generateTokenUrl = self.appSession.generate_authcode()
+        webbrowser.open(generateTokenUrl, new=1)
 
-    dotenv_file = dotenv.find_dotenv()
-    logger.info(f"response:  {response}")
+    # Generates Access Token
+    def genaccesstoken(self):
+        self.appSession.set_token(self.auth_code)
+        response = self.appSession.generate_token()
 
-    # AUTH CODE expired
-    if (response['code'] == -413) or (response['code'] == -8):
-        genAuthCode()
-        auth_code_new = str(input('Enter Auth Code: '))
-        dotenv.set_key(dotenv_path=dotenv_file, key_to_set='AUTH_CODE', value_to_set=auth_code_new)
+        dotenv_file = dotenv.find_dotenv()
+        logger.info(f"response:  {response}")
 
-        fyers_ws.close_connection()
-        exit('Re-run the program now!!')
+        # AUTH CODE expired
+        if (response['code'] == -413) or (response['code'] == -8):
+            self.genAuthCode()
+            auth_code_new = str(input('Enter Auth Code: '))
+            dotenv.set_key(dotenv_path=dotenv_file, key_to_set='AUTH_CODE', value_to_set=auth_code_new)
 
-    try:
-        access_token = response['access_token']
+            self.fyers_ws.close_connection()
+            exit('Re-run the program now!!')
 
-        dotenv.set_key(dotenv_path=dotenv_file, key_to_set='ACCESS_KEY', value_to_set=access_token)
-        logger.info('Access Token generated and saved!')
+        try:
+            access_token = response['access_token']
 
-        fyers_ws.close_connection()
-        exit('Re-run the program now!!')
+            dotenv.set_key(dotenv_path=dotenv_file, key_to_set='ACCESS_KEY', value_to_set=access_token)
+            logger.info('Access Token generated and saved!')
 
-    except Exception as e:
-        logger.info(f"Access Token Exception: {e}")
+            self.fyers_ws.close_connection()
+            exit('Re-run the program now!!')
 
+        except Exception as e:
+            logger.info(f"Access Token Exception: {e}")
 
-# Fyers Web Socket
-def onmessage(message):
-    global temp_time
-    try:
-        timestamp = epoch_to_datetime(message['last_traded_time'])
+    # Fyers Web Socket
+    def onmessage(self, message):
+        global temp_time
+        try:
+            timestamp = epoch_to_datetime(message['last_traded_time'])
 
-        # minute update
-        if (temp_time != timestamp.strftime("%Y-%m-%d %H:%M")) and temp_tick:
-            temp_time = timestamp.strftime("%Y-%m-%d %H:%M")
+            # minute update
+            if (temp_time != timestamp.strftime("%Y-%m-%d %H:%M")) and self.temp_tick:
+                temp_time = timestamp.strftime("%Y-%m-%d %H:%M")
 
-            try:
-                df = pd.DataFrame.from_dict(temp_tick[message["symbol"]])
-                df = df.sort_values(by='timestamp')
-                df = df.drop(index=df.index[0])     # drop the first row
+                try:
+                    df = tick_to_df(temp_tick=self.temp_tick, symbol=message["symbol"])
 
-                df.set_index('timestamp', inplace=True)
+                    row = df.iloc[-1]
+                    timestamp = df.index[-1]
 
-                df = df.resample('min').agg(
-                    open=('c', 'first'),
-                    high=('c', 'max'),
-                    low=('c', 'min'),
-                    close=('c', 'last')
-                ).dropna()
+                    insert_data(
+                        symbol=message["symbol"],
+                        open=float(row['open']),
+                        high=float(row['high']),
+                        low=float(row['low']),
+                        close=float(row['close']),
+                        timestamp=timestamp
+                    )
 
-                row = df.iloc[-1]
-                timestamp = df.index[-1]
+                except Exception as e:
+                    logger.info(f"Data Processing Exception: {e}")
 
-                insert_data(
-                    symbol=message["symbol"],
-                    open=float(row['open']),
-                    high=float(row['high']),
-                    low=float(row['low']),
-                    close=float(row['close']),
-                    timestamp=timestamp
-                )
+                self.temp_tick.clear()
 
-            except Exception as e:
-                logger.info(f"Data Processing Exception: {e}")
+            # fetch ticks
+            self.temp_tick.setdefault(message["symbol"], {}).setdefault('c', []).append(message["ltp"])
+            self.temp_tick.setdefault(message["symbol"], {}).setdefault('timestamp', []).append(timestamp)
 
-            temp_tick.clear()
+            # Write to Redis
+            # rd.hset(f'symbol: {message["symbol"]}', mapping={
+            #     'O': message['open_price'],
+            #     'H': message['high_price'],
+            #     'L': message['low_price'],
+            #     'C': message['ltp'],
+            #     'timestamp': timestamp
+            # })
+            #
+            # Fetch from Redis
+            # tick = rd.hgetall('symbol: NSE:SBIN-EQ')
+            # store into DB...
 
-        temp_tick.setdefault(message["symbol"], {}).setdefault('c', []).append(message["ltp"])
-        temp_tick.setdefault(message["symbol"], {}).setdefault('timestamp', []).append(timestamp)
+        except:
+            pass
 
-        # Write to Redis
-        # rd.hset(f'symbol: {message["symbol"]}', mapping={
-        #     'O': message['open_price'],
-        #     'H': message['high_price'],
-        #     'L': message['low_price'],
-        #     'C': message['ltp'],
-        #     'timestamp': timestamp
-        # })
-        #
-        # Fetch from Redis
-        # tick = rd.hgetall('symbol: NSE:SBIN-EQ')
-        # store into DB...
+    def onerror(self, message):
+        logger.info(f"Connection Error: {message}")
 
-    except:
-        pass
+        # Invalid ACCESS TOKEN
+        if (message['code'] == -300) or (message['code'] == -99):
+            logger.info('Invalid token. Resetting the Access Token!')
+            self.genaccesstoken()
+            exit()
 
+    def onclose(self, message):
+        logger.info(f"Connection Closed: {message}")
 
-def onerror(message):
-    logger.info(f"Connection Error: {message}")
-
-    # Invalid ACCESS TOKEN
-    if (message['code'] == -300) or (message['code'] == -99):
-        logger.info('Invalid token. Resetting the Access Token!')
-        genaccesstoken()
-        exit()
-
-
-def onclose(message):
-    logger.info(f"Connection Closed: {message}")
-
-
-def onopen():
-    logger.info("Socket connected!")
-    symbols = ['NSE:SBIN-EQ']
-    fyers_ws.subscribe(symbols=symbols)
-    fyers_ws.keep_running()
+    def onopen(self):
+        logger.info("Socket connected!")
+        symbols = ['NSE:SBIN-EQ']
+        self.fyers_ws.subscribe(symbols=symbols)
+        self.fyers_ws.keep_running()
 
 
 if __name__ == '__main__':
-    fyers_ws = data_ws.FyersDataSocket(
-        access_token=access_token,
-        log_path="",
-        litemode=False,
-        write_to_file=False,
-        reconnect=True,
-        on_connect=onopen,
-        on_close=onclose,
-        on_error=onerror,
-        on_message=onmessage
-    )
-
-    fyers_ws.connect()
+    obj = FyersConnect()
