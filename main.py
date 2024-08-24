@@ -111,7 +111,7 @@ class FyersConnect:
                 temp_time = timestamp.strftime("%Y-%m-%d %H:%M")
 
                 try:
-                    df = tick_to_df(temp_tick=self.temp_tick, symbol=message["symbol"])
+                    df = tick_to_df(tick=self.temp_tick, symbol=message["symbol"])
 
                     row = df.iloc[-1]
                     timestamp = df.index[-1]
