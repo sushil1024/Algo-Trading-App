@@ -26,23 +26,23 @@ create_table()
 class FyersConnect:
 
     def __init__(self):
-        self.redirect_uri = os.getenv('REDIRECT_URI')
-        self.client_id = os.getenv('CLIENT_ID')
-        self.secret_key = os.getenv('SECRET_KEY')
-        self.grant_type = "authorization_code"
-        self.response_type = "code"
-        self.state = "sample"
+        self.__redirect_uri = os.getenv('REDIRECT_URI')
+        self.__client_id = os.getenv('CLIENT_ID')
+        self.__secret_key = os.getenv('SECRET_KEY')
+        self.__grant_type = "authorization_code"
+        self.__response_type = "code"
+        self.__state = "sample"
 
         self.temp_tick = {}
         self.temp_time = None
 
         self.appSession = fyersModel.SessionModel(
-            client_id=self.client_id,
-            redirect_uri=self.redirect_uri,
-            response_type=self.response_type,
-            state=self.state,
-            secret_key=self.secret_key,
-            grant_type=self.grant_type
+            client_id=self.__client_id,
+            redirect_uri=self.__redirect_uri,
+            response_type=self.__response_type,
+            state=self.__state,
+            secret_key=self.__secret_key,
+            grant_type=self.__grant_type
         )
 
         rd = redis.Redis(host='localhost',
