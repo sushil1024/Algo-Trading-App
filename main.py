@@ -102,28 +102,33 @@ class FyersConnect:
 
     # Fyers Web Socket
     def onmessage(self, message):
-        global temp_time
+        # logger.info("*************** Invoked onmessage() ***************")
+        # logger.info(message)
         try:
             timestamp = epoch_to_datetime(message['last_traded_time'])
 
             # minute update
-            if (temp_time != timestamp.strftime("%Y-%m-%d %H:%M")) and self.temp_tick:
-                temp_time = timestamp.strftime("%Y-%m-%d %H:%M")
+            if (self.temp_time != timestamp.strftime("%Y-%m-%d %H:%M")) and self.temp_tick:
+                self.temp_time = timestamp.strftime("%Y-%m-%d %H:%M")
 
                 try:
                     df = tick_to_df(tick=self.temp_tick, symbol=message["symbol"])
 
-                    row = df.iloc[-1]
-                    timestamp = df.index[-1]
+                    if len(df):
+                        row = df.iloc[-1]
+                        timestamp = df.index[-1]
 
-                    insert_data(
-                        symbol=message["symbol"],
-                        open=float(row['open']),
-                        high=float(row['high']),
-                        low=float(row['low']),
-                        close=float(row['close']),
-                        timestamp=timestamp
-                    )
+                        # logger.info(df)
+                        # logger.info(f"No of ticks: {len(self.temp_tick[message['symbol']]['o'])}")
+
+                        insert_data(
+                            symbol=message["symbol"],
+                            open=float(row['open']),
+                            high=float(row['high']),
+                            low=float(row['low']),
+                            close=float(row['close']),
+                            timestamp=timestamp
+                        )
 
                 except Exception as e:
                     logger.info(f"Data Processing Exception: {e}")
@@ -131,6 +136,9 @@ class FyersConnect:
                 self.temp_tick.clear()
 
             # fetch ticks
+            self.temp_tick.setdefault(message["symbol"], {}).setdefault('o', []).append(message["open_price"])
+            self.temp_tick.setdefault(message["symbol"], {}).setdefault('h', []).append(message["high_price"])
+            self.temp_tick.setdefault(message["symbol"], {}).setdefault('l', []).append(message["low_price"])
             self.temp_tick.setdefault(message["symbol"], {}).setdefault('c', []).append(message["ltp"])
             self.temp_tick.setdefault(message["symbol"], {}).setdefault('timestamp', []).append(timestamp)
 

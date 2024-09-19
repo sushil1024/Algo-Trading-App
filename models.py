@@ -54,6 +54,7 @@ def insert_data(symbol, open, high, low, close, timestamp, data_type='1min'):
         )
         session.add_all([data1])
         session.commit()
+        logger.info(f"Minute candle: O:{open}, H:{high}, L:{low}, C:{close}")
         return "data inserted successfully"
 
 
